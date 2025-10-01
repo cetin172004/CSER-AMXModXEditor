@@ -7,10 +7,12 @@ import sys
 import os
 import threading
 import time
+import subprocess
 from tkinter import font as tkFont
 from PIL import Image, ImageTk
 import ctypes
-from path_validator import PathValidator
+
+
 
 # Set appearance mode and color theme
 ctk.set_appearance_mode("dark")  # Modes: "System" (standard), "Dark", "Light"
@@ -36,6 +38,9 @@ class SplashScreen:
         
         # Don't force splash to be always on top to avoid minimizing other windows
         # self.splash_root.attributes('-topmost', True)
+        
+        # Set taskbar icon for splash screen
+        self.set_splash_taskbar_icon()
         
         # Animation variables
         self.alpha = 0.0
@@ -111,7 +116,7 @@ class SplashScreen:
                     image=self.logo_photo,
                     text=""
                 )
-                self.logo_label.pack(pady=(40, 20))
+                self.logo_label.pack(pady=(40, 10))
         except Exception as e:
             print(f"Splash logo yükleme hatası: {e}")
         
@@ -122,7 +127,7 @@ class SplashScreen:
             font=ctk.CTkFont(family="Consolas", size=28, weight="bold"),
             text_color='#ffffff'
         )
-        self.title_label.pack(pady=(0, 5))
+        self.title_label.pack(pady=(0, 2))
         
         # Subtitle
         self.subtitle_label = ctk.CTkLabel(
@@ -131,7 +136,7 @@ class SplashScreen:
             font=ctk.CTkFont(family="Segoe UI", size=12),
             text_color='#888888'
         )
-        self.subtitle_label.pack(pady=(0, 30))
+        self.subtitle_label.pack(pady=(0, 20))
         
         # Loading section
         self.loading_frame = ctk.CTkFrame(
@@ -215,6 +220,88 @@ class SplashScreen:
                 self.main_app_callback()
         
         fade_out()
+    
+    def set_splash_taskbar_icon(self):
+        """Set taskbar icon for splash screen using comprehensive approach"""
+        try:
+            if sys.platform == "win32":
+                # Wait for window to be fully created and mapped
+                self.splash_root.update_idletasks()
+                self.splash_root.after(100, self._apply_splash_taskbar_icon)  # Delay to ensure window is fully ready
+                
+        except Exception as e:
+            print(f"⚠ Splash taskbar ikon ayarlama hatası: {e}")
+    
+    def _apply_splash_taskbar_icon(self):
+        """Apply taskbar icon for splash using comprehensive Windows approach"""
+        try:
+            ico_path = os.path.join(os.path.dirname(__file__), "images", "cser-icon.ico")
+            if os.path.exists(ico_path):
+                print(f"🔍 Splash ICO dosyası taskbar için kullanılıyor: {ico_path}")
+                
+                # STEP 1: Use Tkinter's built-in iconbitmap method first
+                try:
+                    self.splash_root.iconbitmap(ico_path)
+                    print("✓ Splash Tkinter iconbitmap ayarlandı")
+                except Exception as e:
+                    print(f"⚠ Splash Tkinter iconbitmap hatası: {e}")
+                
+                # STEP 2: Set Application User Model ID to separate from Python
+                try:
+                    app_id = "CSER.SplashScreen.2024"
+                    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+                    print("✓ Splash App User Model ID ayarlandı")
+                except Exception as e:
+                    print(f"⚠ Splash App User Model ID hatası: {e}")
+                
+                # STEP 3: Set window properties
+                self.splash_root.title("CSER - Loading...")
+                self.splash_root.wm_iconname("CSER")
+                
+                # STEP 4: Additional Windows API calls for taskbar
+                try:
+                    hwnd = self.splash_root.winfo_id()
+                    
+                    # Load multiple icon sizes for better compatibility
+                    hicon_small = ctypes.windll.user32.LoadImageW(0, ico_path, 1, 16, 16, 0x00000010)
+                    hicon_large = ctypes.windll.user32.LoadImageW(0, ico_path, 1, 32, 32, 0x00000010)
+                    
+                    if hicon_small and hicon_large:
+                        # Set window icons
+                        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 0, hicon_small)  # WM_SETICON, ICON_SMALL
+                        ctypes.windll.user32.SendMessageW(hwnd, 0x0080, 1, hicon_large)  # WM_SETICON, ICON_BIG
+                        
+                        # Set class icons for taskbar persistence
+                        try:
+                            ctypes.windll.user32.SetClassLongPtrW(hwnd, -14, hicon_small)  # GCL_HICONSM
+                            ctypes.windll.user32.SetClassLongPtrW(hwnd, -34, hicon_large)  # GCL_HICON
+                        except:
+                            # Fallback for 32-bit systems
+                            ctypes.windll.user32.SetClassLongW(hwnd, -14, hicon_small)
+                            ctypes.windll.user32.SetClassLongW(hwnd, -34, hicon_large)
+                        
+                        print("✓ Splash Windows API ikonları ayarlandı")
+                        
+                        # Force window update
+                        ctypes.windll.user32.UpdateWindow(hwnd)
+                        ctypes.windll.user32.RedrawWindow(hwnd, None, None, 0x0001 | 0x0004)
+                        
+                        # Notify shell of icon change
+                        ctypes.windll.shell32.SHChangeNotify(0x08000000, 0x0000, None, None)
+                        
+                        print("✓ Splash taskbar ikonu başarıyla ayarlandı")
+                        
+                    else:
+                        print("⚠ Splash ikon yüklenemedi")
+                        
+                except Exception as e:
+                    print(f"⚠ Splash Windows API ikon hatası: {e}")
+                    
+            else:
+                print("⚠ Splash ICO dosyası bulunamadı")
+                
+        except Exception as e:
+            print(f"⚠ Splash taskbar ikon hatası: {e}")
 
 class CSERCodeEditor:
     def __init__(self):
@@ -258,8 +345,7 @@ class CSERCodeEditor:
         # Initialize content
         self.on_content_changed()
         
-        # Initialize path validator
-        self.path_validator = PathValidator()
+
         
         # Color scheme for syntax highlighting
         self.colors = {
@@ -700,7 +786,6 @@ class CSERCodeEditor:
         self.v_scrollbar.grid(row=0, column=2, sticky="ns", padx=(5, 10), pady=10)
         self.h_scrollbar.grid(row=1, column=1, sticky="ew", padx=5, pady=(0, 10))
         
-
         
         # Bind events for line numbers and syntax highlighting
         self.code_editor.bind('<KeyRelease>', self.on_content_changed)
@@ -714,9 +799,6 @@ class CSERCodeEditor:
         # Bind smart deletion events
         self.code_editor.bind('<BackSpace>', self.on_backspace_key)
         self.code_editor.bind('<Control-BackSpace>', self.on_ctrl_backspace)
-        
-        # Bind save shortcut
-        self.code_editor.bind('<Control-s>', self.on_ctrl_s)
         
         # Also bind mouse wheel to line numbers for consistent behavior
         self.line_numbers.bind('<MouseWheel>', self.on_mouse_wheel)
@@ -742,97 +824,86 @@ public event_round_start() {
 
     
     def create_compiler_section(self):
-        """Create the compiler and counter path section"""
-        self.compiler_frame = ctk.CTkFrame(self.main_container, height=100, corner_radius=10)
+        """Create the paths section for cstrike folder and game executable"""
+        self.compiler_frame = ctk.CTkFrame(self.main_container, height=120, corner_radius=10)
         self.compiler_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=(5, 5))
         self.compiler_frame.grid_propagate(False)
         
         # Configure compiler frame grid
         self.compiler_frame.grid_columnconfigure(1, weight=1)  # Path entries expand
         
-        # Compiler path section
-        compiler_label = ctk.CTkLabel(
+        # CS1.6 cstrike folder section
+        cstrike_label = ctk.CTkLabel(
             self.compiler_frame,
-            text="Compiler Path:",
+            text="CS1.6 cstrike Folder:",
             font=("Segoe UI", 12, "bold"),
             text_color="#ffffff"
         )
-        compiler_label.grid(row=0, column=0, sticky="w", padx=(15, 10), pady=(15, 5))
+        cstrike_label.grid(row=0, column=0, sticky="w", padx=(15, 10), pady=(15, 5))
         
-        self.compiler_path_entry = ctk.CTkEntry(
+        self.cstrike_path_entry = ctk.CTkEntry(
             self.compiler_frame,
-            placeholder_text="Select compile.exe from addons/amxmodx/scripting folder",
+            placeholder_text="Select Counter-Strike 1.6 cstrike folder",
             height=32,
             font=("Consolas", 11)
         )
-        self.compiler_path_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=(15, 5))
+        self.cstrike_path_entry.grid(row=0, column=1, sticky="ew", padx=(0, 10), pady=(15, 5))
         
-        self.compiler_browse_btn = ctk.CTkButton(
+        self.cstrike_browse_btn = ctk.CTkButton(
             self.compiler_frame,
             text="Browse",
             width=80,
             height=32,
-            command=self.browse_compiler_path
+            command=self.browse_cstrike_path
         )
-        self.compiler_browse_btn.grid(row=0, column=2, sticky="e", padx=(0, 15), pady=(15, 5))
+        self.cstrike_browse_btn.grid(row=0, column=2, sticky="e", padx=(0, 15), pady=(15, 5))
         
-        # Game path section
+        # Game executable section
         game_label = ctk.CTkLabel(
             self.compiler_frame,
-            text="Game Path:",
+            text="Game Executable:",
             font=("Segoe UI", 12, "bold"),
             text_color="#ffffff"
         )
         game_label.grid(row=1, column=0, sticky="w", padx=(15, 10), pady=(5, 15))
         
-        self.counter_path_entry = ctk.CTkEntry(
+        self.game_path_entry = ctk.CTkEntry(
             self.compiler_frame,
-            placeholder_text="Select Counter Strike 1.6 executable",
+            placeholder_text="Select Counter-Strike 1.6 executable (hl.exe)",
             height=32,
             font=("Consolas", 11)
         )
-        self.counter_path_entry.grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=(5, 15))
+        self.game_path_entry.grid(row=1, column=1, sticky="ew", padx=(0, 10), pady=(5, 15))
         
-        self.counter_browse_btn = ctk.CTkButton(
+        self.game_browse_btn = ctk.CTkButton(
             self.compiler_frame,
             text="Browse",
             width=80,
             height=32,
-            command=self.browse_counter_path
+            command=self.browse_game_path
         )
-        self.counter_browse_btn.grid(row=1, column=2, sticky="e", padx=(0, 15), pady=(5, 15))
+        self.game_browse_btn.grid(row=1, column=2, sticky="e", padx=(0, 15), pady=(5, 15))
     
-    def browse_compiler_path(self):
-        """Browse for compiler executable"""
+    def browse_cstrike_path(self):
+        """Browse for cstrike folder"""
         from tkinter import filedialog
-        filename = filedialog.askopenfilename(
-            title="Select Compiler Executable",
+        folder_path = filedialog.askdirectory(
+            title="Select Counter-Strike 1.6 cstrike folder"
+        )
+        if folder_path:
+            self.cstrike_path_entry.delete(0, 'end')
+            self.cstrike_path_entry.insert(0, folder_path)
+    
+    def browse_game_path(self):
+        """Browse for game executable file"""
+        from tkinter import filedialog
+        file_path = filedialog.askopenfilename(
+            title="Select Counter-Strike 1.6 executable",
             filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
         )
-        if filename:
-            self.compiler_path_entry.delete(0, 'end')
-            self.compiler_path_entry.insert(0, filename)
-            # Update path validator
-            self.path_validator.set_paths(
-                compiler_path=filename,
-                game_path=self.counter_path_entry.get()
-            )
-    
-    def browse_counter_path(self):
-        """Browse for counter executable"""
-        from tkinter import filedialog
-        filename = filedialog.askopenfilename(
-            title="Select Counter Executable",
-            filetypes=[("Executable files", "*.exe"), ("All files", "*.*")]
-        )
-        if filename:
-            self.counter_path_entry.delete(0, 'end')
-            self.counter_path_entry.insert(0, filename)
-            # Update path validator
-            self.path_validator.set_paths(
-                compiler_path=self.compiler_path_entry.get(),
-                game_path=filename
-            )
+        if file_path:
+            self.game_path_entry.delete(0, 'end')
+            self.game_path_entry.insert(0, file_path)
     
     def create_button_section(self):
         """Create the modern button section"""
@@ -1222,10 +1293,7 @@ public event_round_start() {
         except Exception as e:
             pass  # Ignore ctrl+backspace errors
     
-    def on_ctrl_s(self, event):
-        """Handle Ctrl+S key combination for saving"""
-        self.save_code()
-        return "break"  # Prevent default behavior
+
     
     def on_mouse_wheel(self, event):
         """Handle mouse wheel scroll with real-time synchronization"""
@@ -1262,49 +1330,9 @@ public event_round_start() {
             filename = "untitled"
         return f"{filename}.sma"
     
-    def save_code(self):
-        """Save the current code to a file with path validation"""
-        # Update path validator with current paths
-        self.path_validator.set_paths(
-            compiler_path=self.compiler_path_entry.get(),
-            game_path=self.counter_path_entry.get()
-        )
-        
-        # Check if paths are missing
-        missing_paths = self.path_validator.validate_for_compile_and_run()
-        
-        if missing_paths:
-            # Show warning dialog for missing paths
-            self.show_save_warning_dialog(missing_paths)
-            return
-        
-        # Proceed with saving if paths are valid
-        filename = self.get_full_filename()
-        content = self.code_editor.get("1.0", "end-1c")
-        
-        try:
-            with open(filename, 'w', encoding='utf-8') as file:
-                file.write(content)
-            print(f"File saved: {filename}")
-            messagebox.showinfo("Success", f"File saved: {filename}")
-        except Exception as e:
-            print(f"Error saving file: {e}")
-            messagebox.showerror("Error", f"Error saving file: {e}")
+
     
-    def show_save_warning_dialog(self, missing_paths):
-        """Show custom warning dialog when paths are missing during save"""
-        # Use the custom PathValidatorDialog instead of Windows messagebox
-        from path_validator import PathValidatorDialog
-        
-        dialog = PathValidatorDialog(self.root)
-        result = dialog.show_path_missing_dialog(missing_paths)
-        
-        # Focus on the first missing path entry if user wants to set paths
-        if result == "settings":
-            if "compiler" in missing_paths:
-                self.compiler_path_entry.focus_set()
-            elif "game" in missing_paths:
-                self.counter_path_entry.focus_set()
+
     
     def show_file_menu(self):
         """Show dropdown menu for file operations"""
@@ -1388,8 +1416,7 @@ public event_round_start() {
                 corner_radius=6,
                 fg_color="transparent",
                 hover_color=("#404040", "#353535"),
-                anchor="w",
-                command=self.handle_open_file
+                anchor="w"
             )
             open_btn.pack(fill="x", padx=5, pady=2)
             
@@ -1402,8 +1429,7 @@ public event_round_start() {
                 corner_radius=6,
                 fg_color="transparent",
                 hover_color=("#404040", "#353535"),
-                anchor="w",
-                command=self.handle_save_file
+                anchor="w"
             )
             save_btn.pack(fill="x", padx=5, pady=2)
             
@@ -1416,8 +1442,7 @@ public event_round_start() {
                 corner_radius=6,
                 fg_color="transparent",
                 hover_color=("#404040", "#353535"),
-                anchor="w",
-                command=self.handle_save_as_file
+                anchor="w"
             )
             save_as_btn.pack(fill="x", padx=5, pady=2)
             
@@ -1567,113 +1592,241 @@ public event_round_start() {
         except Exception as e:
             print(f"Error updating file button icon: {e}")
     
-    def handle_open_file(self):
-        """Handle open file action"""
-        self.close_menu()
-        self.open_file()
+
     
-    def handle_save_file(self):
-        """Handle save file action"""
-        self.close_menu()
-        self.save_code()
+
     
-    def handle_save_as_file(self):
-        """Handle save as file action"""
-        self.close_menu()
-        self.save_as_file()
+
     
-    def open_file(self):
-        """Open a file dialog and load the selected file"""
-        file_path = filedialog.askopenfilename(
-            title="Open File",
-            filetypes=[("SMA files", "*.sma"), ("All files", "*.*")]
-        )
-        
-        if file_path:
-            try:
-                with open(file_path, 'r', encoding='utf-8') as file:
-                    content = file.read()
-                    self.code_editor.delete("1.0", "end")
-                    self.code_editor.insert("1.0", content)
-                    
-                    # Update filename entry
-                    filename = os.path.splitext(os.path.basename(file_path))[0]
-                    self.filename_entry.delete(0, "end")
-                    self.filename_entry.insert(0, filename)
-                    
-                print(f"File opened: {file_path}")
-                messagebox.showinfo("Success", f"File opened: {os.path.basename(file_path)}")
-            except Exception as e:
-                print(f"Error opening file: {e}")
-                messagebox.showerror("Error", f"Error opening file: {e}")
+
     
-    def save_as_file(self):
-        """Save the current code with a new filename"""
-        file_path = filedialog.asksaveasfilename(
-            title="Save As",
-            defaultextension=".sma",
-            filetypes=[("SMA files", "*.sma"), ("All files", "*.*")]
-        )
-        
-        if file_path:
-            content = self.code_editor.get("1.0", "end-1c")
-            try:
-                with open(file_path, 'w', encoding='utf-8') as file:
-                    file.write(content)
-                    
-                # Update filename entry
-                filename = os.path.splitext(os.path.basename(file_path))[0]
-                self.filename_entry.delete(0, "end")
-                self.filename_entry.insert(0, filename)
-                
-                print(f"File saved as: {file_path}")
-                messagebox.showinfo("Success", f"File saved as: {os.path.basename(file_path)}")
-            except Exception as e:
-                print(f"Error saving file: {e}")
-                messagebox.showerror("Error", f"Error saving file: {e}")
-    
+    def update_plugins_ini(self, configs_path, plugin_name):
+        """Update plugins.ini file with new plugin"""
+        try:
+            plugins_ini_path = os.path.join(configs_path, "plugins.ini")
+            plugin_line = f"{plugin_name}.amxx"
+            
+            # Dosya varsa oku, yoksa boş liste oluştur
+            existing_lines = []
+            if os.path.exists(plugins_ini_path):
+                with open(plugins_ini_path, 'r', encoding='utf-8') as file:
+                    existing_lines = [line.strip() for line in file.readlines()]
+            
+            # Plugin zaten varsa ekleme
+            if plugin_line in existing_lines:
+                print(f"✅ Plugin zaten mevcut: {plugin_line}")
+                return True
+            
+            # Plugin'i ekle
+            existing_lines.append(plugin_line)
+            
+            # Dosyayı güncelle
+            with open(plugins_ini_path, 'w', encoding='utf-8') as file:
+                for line in existing_lines:
+                    if line.strip():  # Boş satırları atla
+                        file.write(line + '\n')
+            
+            print(f"✅ Plugin eklendi: {plugin_line} -> {plugins_ini_path}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ plugins.ini güncellenirken hata: {e}")
+            return False
+
+
+
+
+
+    def find_amxx_file_in_compiled(self, compiled_path, filename):
+        """Find .amxx file in compiled folder"""
+        try:
+            # .sma uzantısını .amxx ile değiştir
+            amxx_filename = filename.replace('.sma', '.amxx') if filename.endswith('.sma') else f"{filename}.amxx"
+            amxx_file_path = os.path.join(compiled_path, amxx_filename)
+            
+            if os.path.exists(amxx_file_path):
+                print(f"✅ .amxx dosyası bulundu: {amxx_file_path}")
+                return amxx_file_path
+            else:
+                print(f"❌ .amxx dosyası bulunamadı: {amxx_file_path}")
+                return None
+        except Exception as e:
+            print(f"❌ .amxx dosyası aranırken hata: {e}")
+            return None
+
+    def copy_amxx_to_plugins(self, source_path, plugins_path):
+        """Copy .amxx file from compiled to plugins folder"""
+        try:
+            import shutil
+            
+            # Hedef klasör yoksa oluştur
+            if not os.path.exists(plugins_path):
+                os.makedirs(plugins_path)
+                print(f"📁 Plugins klasörü oluşturuldu: {plugins_path}")
+            
+            # Dosya adını al
+            filename = os.path.basename(source_path)
+            destination_path = os.path.join(plugins_path, filename)
+            
+            # Dosyayı kopyala
+            shutil.copy2(source_path, destination_path)
+            print(f"✅ Dosya kopyalandı: {source_path} -> {destination_path}")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Dosya kopyalanırken hata: {e}")
+            return False
+
+
+
     def compile_code(self):
         """Compile button functionality - opens CMD window"""
-        # Update path validator with current paths
-        self.path_validator.set_paths(
-            compiler_path=self.compiler_path_entry.get(),
-            game_path=self.counter_path_entry.get()
-        )
-        
-        # Check if compiler path is set
-        result = self.path_validator.show_missing_paths_dialog(self.root, "compile")
-        
-        if result == "settings":
-            # Focus on compiler path entry
-            self.compiler_path_entry.focus()
-            return
-        
-        # If we get here, all paths are valid
         filename = self.get_full_filename()
+        cstrike_path = self.cstrike_path_entry.get().strip()
+        compiler_path = os.path.join(cstrike_path, "addons", "amxmodx", "scripting", "compile.exe")
+        
         print(f"Compiling {filename}...")
-        # Here you would implement actual compilation logic
-        # This will open a CMD window as mentioned by the user
+        print(f"🔨 Compiler başlatılıyor: {compiler_path}")
+        
+        try:
+            startup_info = subprocess.STARTUPINFO()
+            startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup_info.wShowWindow = 1  # SW_NORMAL = 1
+            
+            # Launcher dosyaları için özel kontrol
+            compiler_filename = os.path.basename(compiler_path).lower()
+            if "launcher" in compiler_filename:
+                # Launcher dosyaları parametresiz çalıştır
+                print("🚀 Compiler Launcher dosyası tespit edildi - parametresiz çalıştırılıyor")
+                process = subprocess.Popen(
+                    [compiler_path],
+                    startupinfo=startup_info,
+                    cwd=os.path.dirname(compiler_path) if os.path.dirname(compiler_path) else None
+                )
+                print(f"✅ Compiler Launcher başarıyla başlatıldı (PID: {process.pid})")
+                
+                # Launcher işlemi başarılı olduğunda plugins.ini'yi güncelle
+                self.update_plugins_ini_after_compile(cstrike_path, filename)
+            else:
+                # Normal compiler dosyaları için parametreli çalıştır
+                print("🔨 Normal compiler dosyası - parametreli çalıştırılıyor")
+                process = subprocess.Popen(
+                    [compiler_path, filename],
+                    startupinfo=startup_info,
+                    cwd=os.path.dirname(compiler_path) if os.path.dirname(compiler_path) else None
+                )
+                print(f"✅ Compiler başarıyla başlatıldı (PID: {process.pid})")
+                
+                # Compile işlemi başarılı olduğunda plugins.ini'yi güncelle
+                self.update_plugins_ini_after_compile(cstrike_path, filename)
+                
+        except FileNotFoundError:
+            print(f"❌ Compiler dosyası çalıştırılamadı: {compiler_path}")
+        except Exception as e:
+            print(f"❌ Compiler başlatılırken hata oluştu: {str(e)}")
+    
+    def update_plugins_ini_after_compile(self, cstrike_path, filename):
+        """Update plugins.ini and copy .amxx file after successful compile"""
+        try:
+            # 1. Configs klasörü yolunu oluştur
+            configs_path = os.path.join(cstrike_path, "addons", "amxmodx", "configs")
+            if not os.path.exists(configs_path):
+                print(f"❌ Configs klasörü bulunamadı: {configs_path}")
+                return
+                return
+            
+            # 2. Compiled klasörü yolunu oluştur
+            compiled_path = os.path.join(cstrike_path, "addons", "amxmodx", "scripting", "compiled")
+            if not os.path.exists(compiled_path):
+                print(f"❌ Compiled klasörü bulunamadı: {compiled_path}")
+                return
+            
+            # 3. Plugins klasörü yolunu oluştur
+            plugins_path = os.path.join(cstrike_path, "addons", "amxmodx", "plugins")
+            if not os.path.exists(plugins_path):
+                print(f"❌ Plugins klasörü bulunamadı: {plugins_path}")
+                return
+            
+            # Dosya adından .sma uzantısını çıkar
+            plugin_name = filename.replace('.sma', '') if filename.endswith('.sma') else filename
+            
+            print(f"📁 Configs klasörü: {configs_path}")
+            print(f"📁 Compiled klasörü: {compiled_path}")
+            print(f"📁 Plugins klasörü: {plugins_path}")
+            print(f"🔌 Plugin adı: {plugin_name}")
+            
+            # 4. plugins.ini'yi güncelle
+            plugins_ini_success = self.update_plugins_ini(configs_path, plugin_name)
+            if plugins_ini_success:
+                print(f"✅ plugins.ini başarıyla güncellendi!")
+            else:
+                print(f"❌ plugins.ini güncellenemedi!")
+            
+            # 5. .amxx dosyasını compiled klasöründe ara
+            amxx_file_path = self.find_amxx_file_in_compiled(compiled_path, filename)
+            if not amxx_file_path:
+                print(f"❌ .amxx dosyası compiled klasöründe bulunamadı")
+                return
+            
+            # 6. .amxx dosyasını plugins klasörüne kopyala
+            copy_success = self.copy_amxx_to_plugins(amxx_file_path, plugins_path)
+            if copy_success:
+                print(f"✅ .amxx dosyası plugins klasörüne kopyalandı!")
+            else:
+                print(f"❌ .amxx dosyası kopyalanamadı!")
+                
+        except Exception as e:
+            print(f"❌ Compile sonrası işlemlerinde hata: {e}")
     
     def run_code(self):
-        """Run button functionality"""
-        # Update path validator with current paths
-        self.path_validator.set_paths(
-            compiler_path=self.compiler_path_entry.get(),
-            game_path=self.counter_path_entry.get()
-        )
+        """Run button functionality - Execute the game/exe file"""
+        game_path = self.game_path_entry.get().strip()
         
-        # Check if game path is set
-        result = self.path_validator.show_missing_paths_dialog(self.root, "run")
-        
-        if result == "settings":
-            # Focus on game path entry
-            self.counter_path_entry.focus()
+        if not game_path:
+            return
+            
+        if not os.path.exists(game_path):
+            # Game executable bulunamadı
+            return
+            
+        if not game_path.lower().endswith('.exe'):
+            messagebox.showerror("Hata", "Sadece .exe dosyaları çalıştırılabilir!")
             return
         
-        # If we get here, all paths are valid
-        filename = self.get_full_filename()
-        print(f"Running {filename}...")
-        # Here you would implement actual run logic
+        try:
+            print(f"🎮 Oyun başlatılıyor: {game_path}")
+            
+            startup_info = subprocess.STARTUPINFO()
+            startup_info.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startup_info.wShowWindow = 1  # SW_NORMAL = 1
+            
+            # Launcher dosyaları için özel kontrol
+            game_filename = os.path.basename(game_path).lower()
+            if "launcher" in game_filename:
+                # Launcher dosyaları parametresiz çalıştır
+                print("🚀 Launcher dosyası tespit edildi - parametresiz çalıştırılıyor")
+                process = subprocess.Popen(
+                    [game_path],
+                    startupinfo=startup_info,
+                    cwd=os.path.dirname(game_path) if os.path.dirname(game_path) else None
+                )
+                print(f"✅ Launcher başarıyla başlatıldı (PID: {process.pid})")
+            else:
+                # Normal oyun dosyaları için parametreli çalıştır
+                print("🎮 Normal oyun dosyası - parametreli çalıştırılıyor")
+                process = subprocess.Popen(
+                    [game_path, "-windowed", "-width", "800", "-height", "600"],
+                    startupinfo=startup_info,
+                    cwd=os.path.dirname(game_path) if os.path.dirname(game_path) else None
+                )
+                print(f"✅ Oyun başarıyla başlatıldı (PID: {process.pid})")
+                print("📏 Çözünürlük: 800x600 (windowed mode)")
+            
+        except FileNotFoundError:
+            messagebox.showerror("Hata", f"Dosya çalıştırılamadı: {game_path}")
+        except Exception as e:
+            messagebox.showerror("Hata", f"Oyun başlatılırken hata oluştu:\n{str(e)}")
+            print(f"❌ Hata: {str(e)}")
     
     def run(self):
         """Start the application"""
